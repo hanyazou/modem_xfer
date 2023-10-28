@@ -123,6 +123,7 @@ int ymodem_receive(int (*__tx)(uint8_t), int (*__rx)(uint8_t *, int timeout_ms),
     uint8_t first_block;
     uint8_t wait_for_file_name;
     uint8_t seqno;
+    int last_block_size;
     uint8_t buf[3];
     uint8_t tmpbuf[1][BUFSIZE];
     uint8_t *payload = tmpbuf[0];
@@ -148,8 +149,20 @@ int ymodem_receive(int (*__tx)(uint8_t), int (*__rx)(uint8_t *, int timeout_ms),
         /*
          * receive block herader
          */
-        if (recv_bytes(buf, 1, 10000) != 1) {
-            return -1;
+        if (recv_bytes(buf, 1, 5000) != 1) {
+            if (first_block) {
+                tx(REQ);
+            } else {
+                seqno--;
+                /* rewind file offset */
+                file_offset -= last_block_size;
+                file_offset_committed = file_offset;
+                tx(NAK);
+            }
+            if (5 <= ++retry) {
+                goto cancel_return;
+            }
+            continue;
         }
         if (buf[0] == EOT) {
             dprintf(("%02X: EOT\n", seqno));
@@ -184,6 +197,7 @@ int ymodem_receive(int (*__tx)(uint8_t), int (*__rx)(uint8_t *, int timeout_ms),
          * receive payload
          */
         crc = 0;
+        last_block_size = (buf[0] == STX ? STX_SIZE : SOH_SIZE);
         for (int i = 0; i < (buf[0] == STX ? STX_SIZE/BUFSIZE : SOH_SIZE/BUFSIZE); i++) {
             if (recv_bytes(payload, BUFSIZE, 1000) != BUFSIZE) {
                 goto retry;
