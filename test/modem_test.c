@@ -39,8 +39,19 @@
 
 static int tx_fd = -1;
 static int rx_fd = -1;
+uint32_t prev_random = 654321;
+uint32_t tx_error_rate = 50;
+uint32_t rx_error_rate = 250;
 
-int open_port(void)
+static void own_srand(uint32_t seed) {
+    prev_random = seed;
+}
+
+static uint32_t own_rand() {
+    return prev_random = prev_random * 1664525U + 1013904223U;
+}
+
+static int open_port(void)
 {
     const char *TX = "/tmp/modem_test-tx";
     const char *RX = "/tmp/modem_test-rx";
@@ -59,7 +70,7 @@ int open_port(void)
     return (0 <= tx_fd) && (0 <= rx_fd) ? 0 : -1;
 }
 
-void close_port(void)
+static void close_port(void)
 {
     if (0 <= tx_fd)
         close(tx_fd);
@@ -67,9 +78,15 @@ void close_port(void)
         close(rx_fd);
 }
 
-int tx_func(uint8_t c)
+static int tx_func(uint8_t c)
 {
     int res;
+
+    if (tx_error_rate && (own_rand() % tx_error_rate) == 0) {
+        printf(" ** %s: TX error injected\n", __func__);
+        c = (uint8_t)own_rand();
+    }
+
     res = write(tx_fd, &c, 1);
     if (res < 0) {
         return -errno;
@@ -78,7 +95,7 @@ int tx_func(uint8_t c)
     return 1;
 }
 
-int rx_func(uint8_t *c, int timeout_ms)
+static int rx_func(uint8_t *c, int timeout_ms)
 {
     int res;
     fd_set set;
@@ -103,16 +120,54 @@ int rx_func(uint8_t *c, int timeout_ms)
         return -errno;
     }
 
+    if (rx_error_rate && (own_rand() % rx_error_rate) == 0) {
+        printf(" ** %s: RX error injected\n", __func__);
+        *c = (uint8_t)own_rand();
+    }
+
     return 1;
 }
 
 int save_func(char *file_name, uint32_t offset, uint8_t *buf, uint16_t size)
 {
+    int res;
     char tmp[12];
+
     memcpy(tmp, file_name, sizeof(tmp));
     tmp[sizeof(tmp) - 1] = '\0';
-    printf("%11s %4u bytes at %6lu\n", tmp, size, (unsigned long)offset);
-    return 0;
+    printf(" %11s %4u bytes at %6lu 0x%06lx\n", tmp, size, (unsigned long)offset,
+           (unsigned long)offset);
+
+    int fd = open(file_name, O_RDWR | O_CREAT, 0664);
+    if (fd < 0) {
+        printf(" %s: open('%s') failed (errno=%d)\n", __func__, file_name, errno);
+        return -errno;
+    }
+    off_t pos = lseek(fd, offset, SEEK_SET);
+    if (pos != offset) {
+        printf(" %s: lseek() failed (%lu != %lu)\n", __func__, (unsigned long)pos,
+               (unsigned long)offset);
+        res = -EIO;
+        goto close_return;
+    }
+    if (buf == 0 && size == 0) {
+        if (ftruncate(fd, offset) != 0) {
+            res = -EIO;
+            goto close_return;
+        }
+    } else {
+        if (write(fd, buf, size) != size) {
+            res = -EIO;
+            goto close_return;
+        }
+    }
+
+    res = 0;
+
+ close_return:
+    close(fd);
+
+    return res;
 }
 
 int main(int ac, char *av[])
