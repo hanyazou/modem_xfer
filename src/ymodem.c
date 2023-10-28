@@ -249,10 +249,13 @@ int ymodem_receive(int (*__tx)(uint8_t), int (*__rx)(uint8_t *, int timeout_ms),
                 tx(ACK);
                 return 0;
             }
-            printf("receiving file '%s', %lu bytes\n", file_name, (unsigned long)file_size);
+            dprintf(("receiving file '%s', %lu bytes\n", file_name, (unsigned long)file_size));
             tx(REQ);
             first_block = 0;
         } else {
+            dprintf(("receiving file '%s', offset %lu -> %lu (%lx -> %lx)\n", file_name,
+                     (unsigned long)file_offset_committed, (unsigned long)file_offset,
+                     (unsigned long)file_offset_committed, (unsigned long)file_offset));
             file_offset_committed = file_offset;
         }
         seqno++;
