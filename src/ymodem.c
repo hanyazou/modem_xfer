@@ -123,7 +123,7 @@ int ymodem_receive(int (*__tx)(uint8_t), int (*__rx)(uint8_t *, int timeout_ms),
     uint8_t first_block;
     uint8_t wait_for_file_name;
     uint8_t seqno;
-    int last_block_size;
+    uint16_t last_block_size;
     uint8_t buf[3];
     uint8_t tmpbuf[1][BUFSIZE];
     uint8_t *payload = tmpbuf[0];
@@ -131,7 +131,7 @@ int ymodem_receive(int (*__tx)(uint8_t), int (*__rx)(uint8_t *, int timeout_ms),
     char file_name[12];
     uint32_t file_offset;
     uint32_t file_offset_committed;
-    uint32_t file_size;;
+    unsigned long file_size;
 
     tx = __tx;
     rx = __rx;
@@ -212,14 +212,14 @@ int ymodem_receive(int (*__tx)(uint8_t), int (*__rx)(uint8_t *, int timeout_ms),
                 file_name[sizeof(file_name) - 1] = '\0';
                 dprintf(("file info string: %s\n", &payload[sizeof(payload)]));
                 payload[BUFSIZE - 1] = '\0';;
-                sscanf((char*)&payload[sizeof(payload)], "%u", &file_size);
+                sscanf((char*)&payload[sizeof(payload)], "%lu", &file_size);
                 file_offset = file_offset_committed = 0;
                 wait_for_file_name = 0;
             }
             if (!first_block && file_offset < file_size) {
-                int n;
+                unsigned int n;
                 if (file_size < file_offset + BUFSIZE) {
-                    n = file_size - file_offset;
+                    n = (unsigned int)(file_size - file_offset);
                 } else {
                     n = BUFSIZE;
                 }
