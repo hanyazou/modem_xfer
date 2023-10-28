@@ -169,14 +169,14 @@ int ymodem_receive(int (*__tx)(uint8_t), int (*__rx)(uint8_t *, int timeout_ms),
             tx(NAK);
             recv_bytes(&buf[0], 1, 1000);
             if (buf[0] != EOT) {
-                printf("WARNING: EOT expected but received %02X\n", buf[0]);
+                dprintf(("WARNING: EOT expected but received %02X\n", buf[0]));
             }
             tx(ACK);
             files++;
             goto recv_file;
         }
         if (buf[0] != STX && buf[0] != SOH) {
-            printf("%02X: invalid header %02X\n", seqno, buf[0]);
+            dprintf(("%02X: invalid header %02X\n", seqno, buf[0]));
             goto retry;
         }
 
@@ -184,12 +184,12 @@ int ymodem_receive(int (*__tx)(uint8_t), int (*__rx)(uint8_t *, int timeout_ms),
          * receive sequence number
          */
         if (recv_bytes(&buf[1], 2, 300) != 2) {
-            printf("%02X: timeout\n", seqno);
+            dprintf(("%02X: timeout\n", seqno));
             goto retry;
         }
         dprintf(("%02X: %02X %02X %02X\n", seqno, buf[0], buf[1], buf[1]));
         if (buf[1] != seqno && buf[2] != ((~seqno) + 1)) {
-            printf("%02X: invalid sequence number\n", seqno);
+            dprintf(("%02X: invalid sequence number\n", seqno));
             goto retry;
         }
 
