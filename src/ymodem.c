@@ -202,7 +202,7 @@ int ymodem_receive(int (*__tx)(uint8_t), int (*__rx)(uint8_t *, int timeout_ms),
                 file_offset = file_offset_committed = 0;
                 wait_for_file_name = 0;
             }
-            if (!first_block) {
+            if (!first_block && file_offset < file_size) {
                 int n;
                 if (file_size < file_offset + BUFSIZE) {
                     n = file_size - file_offset;
@@ -212,7 +212,7 @@ int ymodem_receive(int (*__tx)(uint8_t), int (*__rx)(uint8_t *, int timeout_ms),
                 if (save(file_name, file_offset, payload, n) != 0) {
                     goto cancel_return;
                 }
-                file_offset += BUFSIZE;
+                file_offset += n;
             }
         }
 
@@ -228,7 +228,8 @@ int ymodem_receive(int (*__tx)(uint8_t), int (*__rx)(uint8_t *, int timeout_ms),
         if ((buf[0] * 256 + buf[1]) != crc) {
             if (first_block) {
                 wait_for_file_name = 1;
-            } else {
+            } else
+            if (file_offset != file_offset_committed) {
                 /* rewind file offset and truncate garbage */
                 file_offset = file_offset_committed;
                 if (save(file_name, file_offset, NULL, 0) != 0) {
