@@ -207,8 +207,9 @@ int ymodem_receive(uint8_t buf[MODEM_XFER_BUF_SIZE],
          */
         crc = 0;
         last_block_size = (buf[0] == STX ? STX_SIZE : SOH_SIZE);
-        for (int i = 0; i < (buf[0] == STX ? STX_SIZE/BUFSIZE : SOH_SIZE/BUFSIZE); i++) {
+        for (int i = 0; i < last_block_size/BUFSIZE; i++) {
             if (recv_bytes(buf, BUFSIZE, 1000) != BUFSIZE) {
+                dbg("%02X: payload %d timeout\n", seqno, i);
                 goto retry;
             }
             dbg("%02X: %d bytes received\n", seqno, BUFSIZE);
@@ -250,6 +251,7 @@ int ymodem_receive(uint8_t buf[MODEM_XFER_BUF_SIZE],
          * receive and check CRC
          */
         if (recv_bytes(buf, 2, 1000) != 2) {
+            err("%02X: CEC timeout\n", seqno);
             wait_for_file_name = first_block;
             goto retry;
         }
