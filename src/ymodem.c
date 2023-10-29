@@ -242,6 +242,7 @@ int ymodem_receive(int (*__tx)(uint8_t), int (*__rx)(uint8_t *, int timeout_ms),
                     n = BUFSIZE;
                 }
                 if (save(file_name, file_offset, payload, n) != 0) {
+                    err("filed to save to %s\n", file_name);
                     goto cancel_return;
                 }
                 file_offset += n;
@@ -265,6 +266,7 @@ int ymodem_receive(int (*__tx)(uint8_t), int (*__rx)(uint8_t *, int timeout_ms),
                 /* rewind file offset and truncate garbage */
                 file_offset = file_offset_committed;
                 if (save(file_name, file_offset, NULL, 0) != 0) {
+                    err("filed to truncate %s\n", file_name);
                     goto cancel_return;
                 }
             }
@@ -286,6 +288,7 @@ int ymodem_receive(int (*__tx)(uint8_t), int (*__rx)(uint8_t *, int timeout_ms),
             tx(REQ);
             first_block = 0;
             if (save(file_name, file_offset, NULL, 0) != 0) {
+                err("filed to truncate %s\n", file_name);
                 goto cancel_return;
             }
         } else {
@@ -309,6 +312,7 @@ int ymodem_receive(int (*__tx)(uint8_t), int (*__rx)(uint8_t *, int timeout_ms),
     return 0;
 
  cancel_return:
+    info("cancel\n");
     tx(CAN);
     tx(CAN);
     rx(buf, 1000);
