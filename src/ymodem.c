@@ -25,6 +25,7 @@
 #include <stdio.h>
 #include <ctype.h>
 #include <string.h>
+#include <stdarg.h>
 
 #define REQ  'C'
 #define SOH  0x01
@@ -45,10 +46,13 @@ static int (*save)(char*, uint32_t, uint8_t*, uint16_t);
 //#define DEBUG
 //#define DEBUG_VERBOSE
 
+#define  err(args...) do { modem_xfer_printf(MODEM_XFER_LOG_ERROR,   args); } while(0)
+#define warn(args...) do { modem_xfer_printf(MODEM_XFER_LOG_WARNING, args); } while(0)
+#define info(args...) do { modem_xfer_printf(MODEM_XFER_LOG_INFO,    args); } while(0)
 #ifdef DEBUG
-#define dprintf(args) do { printf args; } while(0)
+#define  dbg(args...) do { modem_xfer_printf(MODEM_XFER_LOG_DEBUG,   args); } while(0)
 #else
-#define dprintf(args) do { } while(0)
+#define  dbg(args...) do { } while(0)
 #endif
 
 static int discard(void)
@@ -86,17 +90,21 @@ static void hex_dump(uint8_t *buf, int n)
 {
     int i;
 
-    for (i = 0; i < n; i++) {
-        if ((i % 16) == 0) {
-            printf("%04X:", i);
-        }
-        printf(" %02X", buf[i]);
-        if ((i % 16) == 15) {
-            printf("\n");
-        }
-    }
-    if ((i % 16) != 0) {
-        printf("\n");
+    for (i = 0; i < n; i += 16) {
+        dbg("%04X: "
+            "%02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X "
+            "%c%c%c%c%c%c%c%c%c%c%c%c%c%c%c%c\n",
+            i,
+            buf[i+0], buf[i+1], buf[i+2], buf[i+3], buf[i+4], buf[i+5], buf[i+6], buf[i+7],
+            buf[i+8], buf[i+9], buf[i+10], buf[i+11], buf[i+12], buf[i+13], buf[i+14], buf[i+15],
+            isprint(buf[i+0]) ? buf[i+0] : '.', isprint(buf[i+1]) ? buf[i+1] : '.',
+            isprint(buf[i+2]) ? buf[i+2] : '.', isprint(buf[i+3]) ? buf[i+3] : '.',
+            isprint(buf[i+4]) ? buf[i+4] : '.', isprint(buf[i+5]) ? buf[i+5] : '.',
+            isprint(buf[i+6]) ? buf[i+6] : '.', isprint(buf[i+7]) ? buf[i+7] : '.',
+            isprint(buf[i+8]) ? buf[i+8] : '.', isprint(buf[i+9]) ? buf[i+9] : '.',
+            isprint(buf[i+10]) ? buf[i+10] : '.', isprint(buf[i+11]) ? buf[i+11] : '.',
+            isprint(buf[i+12]) ? buf[i+12] : '.', isprint(buf[i+13]) ? buf[i+12] : '.',
+            isprint(buf[i+14]) ? buf[i+14] : '.', isprint(buf[i+15]) ? buf[i+15] : '.');
     }
 }
 
@@ -150,13 +158,16 @@ int ymodem_receive(int (*__tx)(uint8_t), int (*__rx)(uint8_t *, int timeout_ms),
          * receive block herader
          */
         if (recv_bytes(buf, 1, 5000) != 1) {
+            dbg("%02X: header timeout\n", seqno);
             if (first_block) {
+                dbg("%02X: send REQ\n", seqno);
                 tx(REQ);
             } else {
                 seqno--;
                 /* rewind file offset */
                 file_offset -= last_block_size;
                 file_offset_committed = file_offset;
+                dbg("%02X: send NAK\n", seqno);
                 tx(NAK);
             }
             if (5 <= ++retry) {
@@ -165,18 +176,18 @@ int ymodem_receive(int (*__tx)(uint8_t), int (*__rx)(uint8_t *, int timeout_ms),
             continue;
         }
         if (buf[0] == EOT) {
-            dprintf(("%02X: EOT\n", seqno));
+            dbg("%02X: EOT\n", seqno);
             tx(NAK);
             recv_bytes(&buf[0], 1, 1000);
             if (buf[0] != EOT) {
-                dprintf(("WARNING: EOT expected but received %02X\n", buf[0]));
+                warn("WARNING: EOT expected but received %02X\n", buf[0]);
             }
             tx(ACK);
             files++;
             goto recv_file;
         }
         if (buf[0] != STX && buf[0] != SOH) {
-            dprintf(("%02X: invalid header %02X\n", seqno, buf[0]));
+            dbg("%02X: invalid header %02X\n", seqno, buf[0]);
             goto retry;
         }
 
@@ -184,12 +195,12 @@ int ymodem_receive(int (*__tx)(uint8_t), int (*__rx)(uint8_t *, int timeout_ms),
          * receive sequence number
          */
         if (recv_bytes(&buf[1], 2, 300) != 2) {
-            dprintf(("%02X: timeout\n", seqno));
+            dbg("%02X: seqno timeout\n", seqno);
             goto retry;
         }
-        dprintf(("%02X: %02X %02X %02X\n", seqno, buf[0], buf[1], buf[1]));
+        dbg("%02X: %02X %02X %02X\n", seqno, buf[0], buf[1], buf[1]);
         if (buf[1] != seqno && buf[2] != ((~seqno) + 1)) {
-            dprintf(("%02X: invalid sequence number\n", seqno));
+            dbg("%02X: invalid sequence number\n", seqno);
             goto retry;
         }
 
@@ -202,7 +213,7 @@ int ymodem_receive(int (*__tx)(uint8_t), int (*__rx)(uint8_t *, int timeout_ms),
             if (recv_bytes(payload, BUFSIZE, 1000) != BUFSIZE) {
                 goto retry;
             }
-            dprintf(("%02X: %d bytes received\n", seqno, BUFSIZE));
+            dbg("%02X: %d bytes received\n", seqno, BUFSIZE);
             #ifdef DEBUG_VERBOSE
             hex_dump(payload, BUFSIZE);
             #endif
@@ -210,15 +221,15 @@ int ymodem_receive(int (*__tx)(uint8_t), int (*__rx)(uint8_t *, int timeout_ms),
             if (wait_for_file_name) {
                 memcpy(file_name, payload, sizeof(file_name));
                 file_name[sizeof(file_name) - 1] = '\0';
-                dprintf(("file info string: %s\n", &payload[sizeof(payload)]));
+                dbg("file info string: %s\n", &payload[sizeof(payload)]);
                 payload[BUFSIZE - 1] = '\0';;
                 sscanf((char*)&payload[sizeof(payload)], "%lu", &file_size);
                 file_offset = file_offset_committed = 0;
                 wait_for_file_name = 0;
             }
-            if (!first_block && file_offset < file_size) {
+            if (!first_block && (file_size == 0 || file_offset < file_size)) {
                 unsigned int n;
-                if (file_size < file_offset + BUFSIZE) {
+                if (file_size != 0 && file_size < file_offset + BUFSIZE) {
                     n = (unsigned int)(file_size - file_offset);
                 } else {
                     n = BUFSIZE;
@@ -237,8 +248,8 @@ int ymodem_receive(int (*__tx)(uint8_t), int (*__rx)(uint8_t *, int timeout_ms),
             wait_for_file_name = first_block;
             goto retry;
         }
-        dprintf(("%02X: crc16: %04x %s %04x\n", seqno, buf[0] * 256 + buf[1],
-                 (buf[0] * 256 + buf[1]) == crc ? "==" : "!=", crc));
+        dbg("%02X: crc16: %04x %s %04x\n", seqno, buf[0] * 256 + buf[1],
+            (buf[0] * 256 + buf[1]) == crc ? "==" : "!=", crc);
         if ((buf[0] * 256 + buf[1]) != crc) {
             if (first_block) {
                 wait_for_file_name = 1;
@@ -260,20 +271,20 @@ int ymodem_receive(int (*__tx)(uint8_t), int (*__rx)(uint8_t *, int timeout_ms),
          */
         if (first_block) {
             if (file_name[0] == 0x00) {
-                dprintf(("total %d file%s received\n", files, 1 < files ? "s" : ""));
+                info("total %d file%s received\n", files, 1 < files ? "s" : "");
                 tx(ACK);
                 return 0;
             }
-            dprintf(("receiving file '%s', %lu bytes\n", file_name, (unsigned long)file_size));
+            info("receiving file '%s', %lu bytes\n", file_name, (unsigned long)file_size);
             tx(REQ);
             first_block = 0;
             if (save(file_name, file_offset, NULL, 0) != 0) {
                 goto cancel_return;
             }
         } else {
-            dprintf(("receiving file '%s', offset %lu -> %lu (%lx -> %lx)\n", file_name,
-                     (unsigned long)file_offset_committed, (unsigned long)file_offset,
-                     (unsigned long)file_offset_committed, (unsigned long)file_offset));
+            dbg("receiving file '%s', offset %lu -> %lu (%lx -> %lx)\n", file_name,
+                (unsigned long)file_offset_committed, (unsigned long)file_offset,
+                (unsigned long)file_offset_committed, (unsigned long)file_offset);
             file_offset_committed = file_offset;
         }
         seqno++;
@@ -281,7 +292,7 @@ int ymodem_receive(int (*__tx)(uint8_t), int (*__rx)(uint8_t *, int timeout_ms),
 
     retry:
         res = discard();
-        dprintf(("%02X: discard %d bytes\n", seqno, res));
+        dbg("%02X: discard %d bytes and send NAK\n", seqno, res);
         tx(NAK);
         if (5 <= ++retry) {
             goto cancel_return;
@@ -297,3 +308,10 @@ int ymodem_receive(int (*__tx)(uint8_t), int (*__rx)(uint8_t *, int timeout_ms),
     return -1;
 }
 
+#if 0
+// PIC XC8 compiler does not seem to handle weak symbol correctly
+void __attribute__((weak)) modem_xfer_printf(int log_level, const char *format, ...)
+{
+    volatile int dummy = 1;
+}
+#endif

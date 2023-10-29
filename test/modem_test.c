@@ -36,6 +36,7 @@
 #include <ctype.h>
 #include <sys/select.h>
 #include <string.h>
+#include <stdarg.h>
 
 static int tx_fd = -1;
 static int rx_fd = -1;
@@ -168,6 +169,14 @@ int save_func(char *file_name, uint32_t offset, uint8_t *buf, uint16_t size)
     close(fd);
 
     return res;
+}
+
+void modem_xfer_printf(int log_level, const char *format, ...)
+{
+    va_list ap;
+    va_start (ap, format);
+    vprintf(format, ap);
+    va_end (ap);
 }
 
 int main(int ac, char *av[])
