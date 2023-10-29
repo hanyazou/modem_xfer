@@ -36,6 +36,7 @@
 #include <ctype.h>
 #include <sys/select.h>
 #include <string.h>
+#include <stdarg.h>
 
 static int tx_fd = -1;
 static int rx_fd = -1;
@@ -51,7 +52,7 @@ static uint32_t own_rand() {
     return prev_random = prev_random * 1664525U + 1013904223U;
 }
 
-static int open_port(void)
+static int open_fifo(void)
 {
     const char *TX = "/tmp/modem_test-tx";
     const char *RX = "/tmp/modem_test-rx";
@@ -68,6 +69,34 @@ static int open_port(void)
     }
 
     return (0 <= tx_fd) && (0 <= rx_fd) ? 0 : -1;
+}
+
+static int open_socket(int port)
+{
+    int listen_fd = 0;
+    struct sockaddr_in addr;
+
+    listen_fd = socket(AF_INET, SOCK_STREAM, 0);
+    memset(&addr, '0', sizeof(addr));
+    addr.sin_family = AF_INET;
+    addr.sin_addr.s_addr = inet_addr("127.0.0.1");
+    addr.sin_port = htons(port);
+
+    int optval = 1;
+    setsockopt(listen_fd, SOL_SOCKET, SO_REUSEPORT, &optval, sizeof(optval));
+    bind(listen_fd, (struct sockaddr*)&addr, sizeof(addr));
+    listen(listen_fd, 1);
+    printf("listen on port ... %d\n", port);
+    tx_fd = accept(listen_fd, (struct sockaddr*)NULL, NULL);
+    if(tx_fd < 0) {
+        printf("create raw TCP port failed\n");
+    } else {
+        printf("connection established\n");
+
+    }
+    rx_fd = tx_fd;
+
+    return (0 <= tx_fd) ? 0 : -1;
 }
 
 static void close_port(void)
@@ -170,13 +199,45 @@ int save_func(char *file_name, uint32_t offset, uint8_t *buf, uint16_t size)
     return res;
 }
 
+void modem_xfer_printf(int log_level, const char *format, ...)
+{
+    va_list ap;
+    va_start (ap, format);
+    vprintf(format, ap);
+    va_end (ap);
+}
+
 int main(int ac, char *av[])
 {
-    if (open_port() != 0) {
-        printf("open_port() failed\n");
+    uint8_t buf[MODEM_XFER_BUF_SIZE];
+    int i;
+    int port = -1;
+
+    for (i = 1; i < ac; i++) {
+        if (strcmp(av[i], "-p") == 0 || strcmp(av[i], "--port") == 0) {
+            char *p = &av[i][0];
+            if (i + 1 < ac) {
+                port = strtol(av[i + 1], &p, 0);
+            }
+            if (*p != '\0') {
+                printf("--port option requires network port number argument\n");
+                exit(1);
+            }
+        }
+    }
+
+    if (0 <= port) {
+        if (open_socket(port) != 0) {
+            printf("open_socket() failed\n");
+            exit(1);
+        }
+    } else
+    if (open_fifo() != 0) {
+        printf("open_fifo() failed\n");
         exit(1);
     }
-    if (ymodem_receive(tx_func, rx_func, save_func) != 0) {
+
+    if (ymodem_receive(buf, tx_func, rx_func, save_func) != 0) {
         printf("ymodem_receive() failed\n");
     }
     close_port();

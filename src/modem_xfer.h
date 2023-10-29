@@ -26,7 +26,20 @@
 
 #include <stdint.h>
 
-int ymodem_receive(int (*tx)(uint8_t), int (*rx)(uint8_t *, int timeout_ms),
-                   int (*save)(char*, uint32_t, uint8_t*, uint16_t));
+#define MODEM_XFER_BUF_SIZE 128
+
+enum {
+    MODEM_XFER_LOG_ERROR,
+    MODEM_XFER_LOG_WARNING,
+    MODEM_XFER_LOG_INFO,
+    MODEM_XFER_LOG_DEBUG,
+    MODEM_XFER_LOG_VERBOSE,
+};
+
+extern int ymodem_receive(uint8_t buf[MODEM_XFER_BUF_SIZE],
+                          int (*tx)(uint8_t), int (*rx)(uint8_t *, int timeout_ms),
+                          int (*save)(char*, uint32_t, uint8_t*, uint16_t));
+extern void modem_xfer_printf (int log_level, const char *format, ...)
+    __attribute__ ((format (printf, 2, 3)));
 
 #endif  // __MODEM_XFER_H__
