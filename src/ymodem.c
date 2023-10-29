@@ -221,9 +221,16 @@ int ymodem_receive(int (*__tx)(uint8_t), int (*__rx)(uint8_t *, int timeout_ms),
             if (wait_for_file_name) {
                 memcpy(file_name, payload, sizeof(file_name));
                 file_name[sizeof(file_name) - 1] = '\0';
-                dbg("file info string: %s\n", &payload[sizeof(payload)]);
-                payload[BUFSIZE - 1] = '\0';;
-                sscanf((char*)&payload[sizeof(payload)], "%lu", &file_size);
+                if (file_name[0]) {
+                    payload[BUFSIZE - 1] = '\0';  // fail safe
+                    hex_dump(payload, 16);
+                    dbg("file info string: %s\n", &payload[strlen((char *)payload) + 1]);
+                    if (sscanf((char*)&payload[strlen((char *)payload) + 1], "%lu", &file_size)
+                        != 1) {
+                        warn("WARNING: unknown file size\n");
+                        file_size = 0;
+                    }
+                }
                 file_offset = file_offset_committed = 0;
                 wait_for_file_name = 0;
             }
