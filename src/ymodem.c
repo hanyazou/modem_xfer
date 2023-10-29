@@ -124,7 +124,8 @@ static uint16_t crc16(uint16_t crc, const void *buf, unsigned int count)
     return crc;
 }
 
-int ymodem_receive(int (*__tx)(uint8_t), int (*__rx)(uint8_t *, int timeout_ms),
+int ymodem_receive(uint8_t buf[MODEM_XFER_BUF_SIZE],
+                   int (*__tx)(uint8_t), int (*__rx)(uint8_t *, int timeout_ms),
                    int (*__save)(char*, uint32_t, uint8_t*, uint16_t))
 {
     int res, retry, files;
@@ -132,9 +133,6 @@ int ymodem_receive(int (*__tx)(uint8_t), int (*__rx)(uint8_t *, int timeout_ms),
     uint8_t wait_for_file_name;
     uint8_t seqno;
     uint16_t last_block_size;
-    uint8_t buf[3];
-    uint8_t tmpbuf[1][BUFSIZE];
-    uint8_t *payload = tmpbuf[0];
     uint16_t crc;
     char file_name[12];
     uint32_t file_offset;
@@ -210,23 +208,22 @@ int ymodem_receive(int (*__tx)(uint8_t), int (*__rx)(uint8_t *, int timeout_ms),
         crc = 0;
         last_block_size = (buf[0] == STX ? STX_SIZE : SOH_SIZE);
         for (int i = 0; i < (buf[0] == STX ? STX_SIZE/BUFSIZE : SOH_SIZE/BUFSIZE); i++) {
-            if (recv_bytes(payload, BUFSIZE, 1000) != BUFSIZE) {
+            if (recv_bytes(buf, BUFSIZE, 1000) != BUFSIZE) {
                 goto retry;
             }
             dbg("%02X: %d bytes received\n", seqno, BUFSIZE);
             #ifdef DEBUG_VERBOSE
-            hex_dump(payload, BUFSIZE);
+            hex_dump(buf, BUFSIZE);
             #endif
-            crc = crc16(crc, payload, BUFSIZE);
+            crc = crc16(crc, buf, BUFSIZE);
             if (wait_for_file_name) {
-                memcpy(file_name, payload, sizeof(file_name));
+                memcpy(file_name, buf, sizeof(file_name));
                 file_name[sizeof(file_name) - 1] = '\0';
                 if (file_name[0]) {
-                    payload[BUFSIZE - 1] = '\0';  // fail safe
-                    hex_dump(payload, 16);
-                    dbg("file info string: %s\n", &payload[strlen((char *)payload) + 1]);
-                    if (sscanf((char*)&payload[strlen((char *)payload) + 1], "%lu", &file_size)
-                        != 1) {
+                    buf[BUFSIZE - 1] = '\0';  // fail safe
+                    hex_dump(buf, 16);
+                    dbg("file info string: %s\n", &buf[strlen((char *)buf) + 1]);
+                    if (sscanf((char*)&buf[strlen((char *)buf) + 1], "%lu", &file_size) != 1) {
                         warn("WARNING: unknown file size\n");
                         file_size = 0;
                     }
@@ -241,7 +238,7 @@ int ymodem_receive(int (*__tx)(uint8_t), int (*__rx)(uint8_t *, int timeout_ms),
                 } else {
                     n = BUFSIZE;
                 }
-                if (save(file_name, file_offset, payload, n) != 0) {
+                if (save(file_name, file_offset, buf, n) != 0) {
                     err("filed to save to %s\n", file_name);
                     goto cancel_return;
                 }

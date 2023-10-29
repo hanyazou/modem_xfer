@@ -181,11 +181,12 @@ void modem_xfer_printf(int log_level, const char *format, ...)
 
 int main(int ac, char *av[])
 {
+    uint8_t buf[MODEM_XFER_BUF_SIZE];
     if (open_port() != 0) {
         printf("open_port() failed\n");
         exit(1);
     }
-    if (ymodem_receive(tx_func, rx_func, save_func) != 0) {
+    if (ymodem_receive(buf, tx_func, rx_func, save_func) != 0) {
         printf("ymodem_receive() failed\n");
     }
     close_port();
