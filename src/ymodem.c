@@ -157,7 +157,7 @@ int ymodem_receive(int (*__tx)(uint8_t), int (*__rx)(uint8_t *, int timeout_ms),
         /*
          * receive block herader
          */
-        if (recv_bytes(buf, 1, 5000) != 1) {
+        if (recv_bytes(buf, 1, 1000) != 1) {
             dbg("%02X: header timeout\n", seqno);
             if (first_block) {
                 dbg("%02X: send REQ\n", seqno);
@@ -170,7 +170,7 @@ int ymodem_receive(int (*__tx)(uint8_t), int (*__rx)(uint8_t *, int timeout_ms),
                 dbg("%02X: send NAK\n", seqno);
                 tx(NAK);
             }
-            if (5 <= ++retry) {
+            if (25 <= ++retry) {
                 goto cancel_return;
             }
             continue;
