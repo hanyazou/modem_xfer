@@ -208,8 +208,9 @@ int ymodem_receive(uint8_t buf[MODEM_XFER_BUF_SIZE],
         crc = 0;
         last_block_size = (buf[0] == STX ? STX_SIZE : SOH_SIZE);
         for (int i = 0; i < last_block_size/BUFSIZE; i++) {
-            if (recv_bytes(buf, BUFSIZE, 1000) != BUFSIZE) {
-                dbg("%02X: payload %d timeout\n", seqno, i);
+            int n = recv_bytes(buf, BUFSIZE, 1000);
+            if (n != BUFSIZE) {
+                info("%02X: payload %d timeout, n=%d\n", seqno, i, n);
                 goto retry;
             }
             dbg("%02X: %d bytes received\n", seqno, BUFSIZE);
@@ -239,8 +240,9 @@ int ymodem_receive(uint8_t buf[MODEM_XFER_BUF_SIZE],
                 } else {
                     n = BUFSIZE;
                 }
-                if (save(file_name, file_offset, buf, n) != 0) {
-                    err("filed to save to %s\n", file_name);
+                res = save(file_name, file_offset, buf, n);
+                if (res != 0) {
+                    err("failed to save to %s, %d\n", file_name, res);
                     goto cancel_return;
                 }
                 file_offset += n;
@@ -264,8 +266,9 @@ int ymodem_receive(uint8_t buf[MODEM_XFER_BUF_SIZE],
             if (file_offset != file_offset_committed) {
                 /* rewind file offset and truncate garbage */
                 file_offset = file_offset_committed;
-                if (save(file_name, file_offset, NULL, 0) != 0) {
-                    err("filed to truncate %s\n", file_name);
+                res = save(file_name, file_offset, NULL, 0);
+                if (res != 0) {
+                    err("failed to truncate %s, %d\n", file_name, res);
                     goto cancel_return;
                 }
             }
@@ -286,8 +289,9 @@ int ymodem_receive(uint8_t buf[MODEM_XFER_BUF_SIZE],
             info("receiving file '%s', %lu bytes\n", file_name, (unsigned long)file_size);
             tx(REQ);
             first_block = 0;
-            if (save(file_name, file_offset, NULL, 0) != 0) {
-                err("filed to truncate %s\n", file_name);
+            res = save(file_name, file_offset, NULL, 0);
+            if (res != 0) {
+                err("failed to truncate %s, %d\n", file_name, res);
                 goto cancel_return;
             }
         } else {
