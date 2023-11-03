@@ -21,31 +21,16 @@
  * WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef __MODEM_XFER_H__
-#define __MODEM_XFER_H__
+#ifndef __MODEM_XFER_DEBUG_H__
+#define __MODEM_XFER_DEBUG_H__
 
-#include <stdint.h>
-
-#define MODEM_XFER_BUF_SIZE 128
-
-enum {
-    MODEM_XFER_LOG_ERROR,
-    MODEM_XFER_LOG_WARNING,
-    MODEM_XFER_LOG_INFO,
-    MODEM_XFER_LOG_DEBUG,
-    MODEM_XFER_LOG_VERBOSE,
-};
-
-extern int ymodem_receive(uint8_t buf[MODEM_XFER_BUF_SIZE]);
-
-extern int modem_xfer_discard(void);
-extern int modem_xfer_recv_bytes(uint8_t *buf, int n, int timeout_ms);
-extern void modem_xfer_hex_dump(uint8_t *buf, int n);
-extern uint16_t modem_xfer_crc16(uint16_t crc, const void *buf, unsigned int count);
-extern int modem_xfer_tx(uint8_t);
-extern int modem_xfer_rx(uint8_t *, int timeout_ms);
-extern int modem_xfer_save(char*, uint32_t, uint8_t*, uint16_t);
-extern void modem_xfer_printf(int log_level, const char *format, ...)
-    __attribute__ ((format (printf, 2, 3)));
+#define  err(args...) do { modem_xfer_printf(MODEM_XFER_LOG_ERROR,   args); } while(0)
+#define warn(args...) do { modem_xfer_printf(MODEM_XFER_LOG_WARNING, args); } while(0)
+#define info(args...) do { modem_xfer_printf(MODEM_XFER_LOG_INFO,    args); } while(0)
+#ifdef DEBUG
+#define  dbg(args...) do { modem_xfer_printf(MODEM_XFER_LOG_DEBUG,   args); } while(0)
+#else
+#define  dbg(args...) do { } while(0)
+#endif
 
 #endif  // __MODEM_XFER_H__

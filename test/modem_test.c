@@ -107,7 +107,7 @@ static void close_port(void)
         close(rx_fd);
 }
 
-static int tx_func(uint8_t c)
+int modem_xfer_tx(uint8_t c)
 {
     int res;
 
@@ -124,7 +124,7 @@ static int tx_func(uint8_t c)
     return 1;
 }
 
-static int rx_func(uint8_t *c, int timeout_ms)
+int modem_xfer_rx(uint8_t *c, int timeout_ms)
 {
     int res;
     fd_set set;
@@ -157,7 +157,7 @@ static int rx_func(uint8_t *c, int timeout_ms)
     return 1;
 }
 
-int save_func(char *file_name, uint32_t offset, uint8_t *buf, uint16_t size)
+int modem_xfer_save(char *file_name, uint32_t offset, uint8_t *buf, uint16_t size)
 {
     int res;
     char tmp[12];
@@ -237,7 +237,7 @@ int main(int ac, char *av[])
         exit(1);
     }
 
-    if (ymodem_receive(buf, tx_func, rx_func, save_func) != 0) {
+    if (ymodem_receive(buf) != 0) {
         printf("ymodem_receive() failed\n");
     }
     close_port();

@@ -3,8 +3,8 @@ SRC_DIR=../src
 
 all: modem_test
 
-modem_test: modem_test.c $(SRC_DIR)/ymodem.c $(SRC_DIR)//modem_xfer.h
-	cc -I$(SRC_DIR) -DDEBUG -o modem_test modem_test.c $(SRC_DIR)//ymodem.c
+modem_test: modem_test.c $(SRC_DIR)/modem_xfer.c $(SRC_DIR)/ymodem.c $(SRC_DIR)/modem_xfer.h $(SRC_DIR)/modem_xfer_debug.h
+	cc -I$(SRC_DIR) -DDEBUG -o modem_test modem_test.c $(SRC_DIR)/modem_xfer.c $(SRC_DIR)/ymodem.c
 
 test:: all
 	pkill -a modem_test || true
