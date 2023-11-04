@@ -21,7 +21,7 @@
  * WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#include "modem_xfer.h"
+#include <modem_xfer.h>
 
 #include <stdio.h>
 #include <sys/types.h>
@@ -41,8 +41,8 @@
 static int tx_fd = -1;
 static int rx_fd = -1;
 uint32_t prev_random = 654321;
-uint32_t tx_error_rate = 50;
-uint32_t rx_error_rate = 250;
+uint32_t tx_error_rate;
+uint32_t rx_error_rate;
 
 static void own_srand(uint32_t seed) {
     prev_random = seed;
@@ -212,17 +212,52 @@ int main(int ac, char *av[])
     uint8_t buf[MODEM_XFER_BUF_SIZE];
     int i;
     int port = -1;
+    char *send_files[8];
+    int num_send_files = 0;
+    struct stat statbuf;
+    char *p;
 
     for (i = 1; i < ac; i++) {
-        if (strcmp(av[i], "-p") == 0 || strcmp(av[i], "--port") == 0) {
-            char *p = &av[i][0];
-            if (i + 1 < ac) {
-                port = strtol(av[i + 1], &p, 0);
-            }
-            if (*p != '\0') {
-                printf("--port option requires network port number argument\n");
+        if (av[i][0] == '-') {
+            if (strcmp(av[i], "-p") == 0 || strcmp(av[i], "--port") == 0) {
+                p = &av[i][0];
+                if (i + 1 < ac) {
+                    port = strtol(av[i + 1], &p, 0);
+                }
+                if (*p != '\0') {
+                    printf("--port option requires network port number argument\n");
+                    exit(1);
+                }
+                i++;
+            } else
+            if (strcmp(av[i], "-r") == 0 || strcmp(av[i], "--random-seed") == 0) {
+                p = &av[i][0];
+                if (i + 1 < ac) {
+                    prev_random = strtol(av[i + 1], &p, 0);
+                }
+                if (*p != '\0') {
+                    printf("--random-seed option requires a integer argument\n");
+                    exit(1);
+                }
+                i++;
+            } else {
+                printf("unknown option %s\n", av[i]);
                 exit(1);
             }
+        } else {
+            if (sizeof(send_files)/sizeof(*send_files) <= num_send_files) {
+                printf("can't handle %s, too many files\n", av[i]);
+                exit(1);
+            }
+            if (stat(av[i], &statbuf) != 0) {
+                printf("can't get status of %s\n", av[i]);
+                exit(1);
+            }
+            if ((statbuf.st_mode & S_IFMT) != S_IFREG) {
+                printf("%s is not a regular file\n", av[i]);
+                exit(1);
+            }
+            send_files[num_send_files++] = av[i];
         }
     }
 
@@ -237,8 +272,65 @@ int main(int ac, char *av[])
         exit(1);
     }
 
-    if (ymodem_receive(buf) != 0) {
-        printf("ymodem_receive() failed\n");
+    if (num_send_files == 0) {
+        tx_error_rate = 100;
+        rx_error_rate = 500;
+        if (ymodem_receive(buf) != 0) {
+            printf("ymodem_receive() failed\n");
+        }
+    } else {
+        ymodem_context ctx;
+        uint8_t buf[MODEM_XFER_BUF_SIZE];
+        int fd;
+        int res;
+
+        tx_error_rate = 500;
+        rx_error_rate = 100;
+        ymodem_send_init(&ctx, buf);
+        for (i = 0; i < num_send_files; i++) {
+            if (stat(send_files[i], &statbuf) != 0) {
+                printf("can't get status of %s\n", av[i]);
+                ymodem_send_cancel(&ctx);
+                exit(1);
+            }
+            fd = open(send_files[i], O_RDONLY);
+            if (fd < 0) {
+                printf("can't open file %s\n", send_files[i]);
+                ymodem_send_cancel(&ctx);
+                exit(1);
+            }
+            char *file_name = strrchr(send_files[i], '/');
+            if (file_name != NULL) {
+                file_name++;
+            } else {
+                file_name = send_files[i];
+            }
+            res = ymodem_send_header(&ctx, file_name, (uint32_t)statbuf.st_size);
+            if (res != MODEM_XFER_RES_OK) {
+                printf("ymodem_send_header() failed, %d\n", res);
+                exit(1);
+            }
+            uint32_t xfer_size = 0;
+            while (xfer_size < (uint32_t)statbuf.st_size) {
+                int n = read(fd, buf, MODEM_XFER_BUF_SIZE);
+                if (n != MODEM_XFER_BUF_SIZE && xfer_size + n != (uint32_t)statbuf.st_size) {
+                    printf("read(%s) failed at %lu/%lu\n", send_files[i], (unsigned long)xfer_size,
+                           (unsigned long)statbuf.st_size);
+                    ymodem_send_cancel(&ctx);
+                    exit(1);
+                }
+                res = ymodem_send_block(&ctx);
+                if (res != MODEM_XFER_RES_OK) {
+                    printf("ymodem_send_block() failed, %d\n", res);
+                    exit(1);
+                }
+                xfer_size += MODEM_XFER_BUF_SIZE;
+            }
+        }
+        res = ymodem_send_end(&ctx);
+        if (res != MODEM_XFER_RES_OK) {
+            printf("ymodem_send_end() failed, %d\n", res);
+        }
     }
     close_port();
 

@@ -36,7 +36,36 @@ enum {
     MODEM_XFER_LOG_VERBOSE,
 };
 
+enum {
+    MODEM_XFER_STAT_IVALID,
+    MODEM_XFER_STAT_INIT,
+    MODEM_XFER_STAT_XFER,
+    MODEM_XFER_STAT_END,
+};
+
+enum {
+    MODEM_XFER_RES_OK = 0,
+    MODEM_XFER_RES_CANCELED,
+    MODEM_XFER_RES_TIMEOUT,
+    MODEM_XFER_RES_EIO,
+    MODEM_XFER_RES_EPTOROCOL,
+    MODEM_XFER_RES_ESEQUENCE,
+};
+
+typedef struct {
+    uint8_t stat;
+    uint8_t seqno;
+    uint8_t *buf;
+    int num_files_xfered;
+} ymodem_context;
+
 extern int ymodem_receive(uint8_t buf[MODEM_XFER_BUF_SIZE]);
+
+extern void ymodem_send_init(ymodem_context *ctx, uint8_t buf[MODEM_XFER_BUF_SIZE]);
+extern int ymodem_send_header(ymodem_context *ctx, char *file_name, uint32_t size);
+extern int ymodem_send_block(ymodem_context *ctx);
+extern int ymodem_send_end(ymodem_context *ctx);
+extern void ymodem_send_cancel(ymodem_context *ctx);
 
 extern int modem_xfer_discard(void);
 extern int modem_xfer_recv_bytes(uint8_t *buf, int n, int timeout_ms);

@@ -43,6 +43,7 @@
 //#define DEBUG_VERBOSE
 
 #include "modem_xfer_debug.h"
+#include "ymodem.h"
 
 int ymodem_receive(uint8_t buf[MODEM_XFER_BUF_SIZE])
 {
