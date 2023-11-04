@@ -57,9 +57,14 @@ typedef struct {
     uint8_t seqno;
     uint8_t *buf;
     int num_files_xfered;
+    char file_name[12];
+    uint32_t file_offset;
+    unsigned long file_size;
 } ymodem_context;
 
 extern int ymodem_receive(uint8_t buf[MODEM_XFER_BUF_SIZE]);
+extern void ymodem_receive_init(ymodem_context *ctx, uint8_t buf[MODEM_XFER_BUF_SIZE]);
+extern int ymodem_receive_block(ymodem_context *ctx, unsigned int *sizep);
 
 extern void ymodem_send_init(ymodem_context *ctx, uint8_t buf[MODEM_XFER_BUF_SIZE]);
 extern int ymodem_send_header(ymodem_context *ctx, char *file_name, uint32_t size);

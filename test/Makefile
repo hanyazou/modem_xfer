@@ -15,6 +15,7 @@ test:: all
 	pkill -a modem_test || true
 	pkill -a rz || true
 	for r in 654321 123456 341278 923781; do \
+          rm -f foo.txt bar.txt baz.dat; \
           ./modem_test --random-seed $${r} & \
           sz --ymodem data/foo.txt data/bar.txt data/baz.dat < $(PIPE)-tx > $(PIPE)-rx; \
           make check_test_result || exit 1; \

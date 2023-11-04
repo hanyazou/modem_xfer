@@ -47,61 +47,76 @@
 
 int ymodem_receive(uint8_t buf[MODEM_XFER_BUF_SIZE])
 {
-    int res, retry, files;
-    uint8_t first_block;
-    uint8_t wait_for_file_name;
-    uint8_t seqno;
-    uint16_t last_block_size;
+    int res;
+    unsigned int n;
+
+    ymodem_context ctx;
+    ymodem_receive_init(&ctx, buf);
+    while ((res = ymodem_receive_block(&ctx, &n)) == MODEM_XFER_RES_OK) {
+        if (ctx.file_name[0] == '\0') {
+            return MODEM_XFER_RES_OK;
+        }
+        res = modem_xfer_save(ctx.file_name, ctx.file_offset, ctx.buf, n);
+        if (res != MODEM_XFER_RES_OK) {
+            ymodem_send_cancel(&ctx);
+            return res;
+        }
+    }
+
+    return res;
+}
+
+void ymodem_receive_init(ymodem_context *ctx, uint8_t buf[MODEM_XFER_BUF_SIZE])
+{
+    dbg("--: %s:\n",  __func__);
+    ctx->stat = MODEM_XFER_STAT_INIT;
+    ctx->buf = buf;
+    ctx->num_files_xfered = 0;
+    ctx->seqno = 0;
+}
+
+int ymodem_receive_block(ymodem_context *ctx, unsigned int *sizep)
+{
+    int res, retry;
+    uint8_t *buf = ctx->buf;
     uint16_t crc;
-    char file_name[12];
-    uint32_t file_offset;
-    uint32_t file_offset_committed;
-    unsigned long file_size;
+    uint8_t crc_buf[2];
 
-    files = 0;
+    if (ctx->stat == MODEM_XFER_STAT_XFER) {
+        ctx->file_offset += MODEM_XFER_BUF_SIZE;
+    }
 
- recv_file:
+ entry:
     retry = 0;
-    seqno = 0;
-    first_block = 1;
-    wait_for_file_name = 1;
+    while (retry++ < (ctx->stat == MODEM_XFER_STAT_INIT ? 25 : 5)) {
+        if (ctx->stat == MODEM_XFER_STAT_INIT) {
+            dbg("%02X: send REQ\n", ctx->seqno);
+            modem_xfer_tx(REQ);
+        }
 
-    modem_xfer_tx(REQ);
-    while (1) {
         /*
          * receive block herader
          */
         if (modem_xfer_recv_bytes(buf, 1, 1000) != 1) {
-            dbg("%02X: header timeout\n", seqno);
-            if (first_block) {
-                dbg("%02X: send REQ\n", seqno);
-                modem_xfer_tx(REQ);
-            } else {
-                seqno--;
-                /* rewind file offset */
-                file_offset -= last_block_size;
-                file_offset_committed = file_offset;
-                dbg("%02X: send NAK\n", seqno);
-                modem_xfer_tx(NAK);
-            }
-            if (25 <= ++retry) {
-                goto cancel_return;
-            }
+            dbg("%02X: header timeout\n", ctx->seqno);
             continue;
         }
-        if (buf[0] == EOT) {
-            dbg("%02X: EOT\n", seqno);
+
+        if (ctx->stat == MODEM_XFER_STAT_XFER && buf[0] == EOT) {
+            dbg("%02X: EOT\n", ctx->seqno);
             modem_xfer_tx(NAK);
             modem_xfer_recv_bytes(&buf[0], 1, 1000);
             if (buf[0] != EOT) {
                 warn("WARNING: EOT expected but received %02X\n", buf[0]);
             }
             modem_xfer_tx(ACK);
-            files++;
-            goto recv_file;
+            ctx->num_files_xfered++;
+            ctx->stat = MODEM_XFER_STAT_INIT;
+            ctx->seqno = 0;
+            goto entry;
         }
-        if (buf[0] != STX && buf[0] != SOH) {
-            dbg("%02X: invalid header %02X\n", seqno, buf[0]);
+        if (buf[0] != SOH) {
+            dbg("%02X: invalid header %02X\n", ctx->seqno, buf[0]);
             goto retry;
         }
 
@@ -109,131 +124,84 @@ int ymodem_receive(uint8_t buf[MODEM_XFER_BUF_SIZE])
          * receive sequence number
          */
         if (modem_xfer_recv_bytes(&buf[1], 2, 300) != 2) {
-            dbg("%02X: seqno timeout\n", seqno);
+            dbg("%02X: seqno timeout\n", ctx->seqno);
             goto retry;
         }
-        dbg("%02X: %02X %02X %02X\n", seqno, buf[0], buf[1], buf[1]);
-        if (buf[1] != seqno && buf[2] != ((~seqno) + 1)) {
-            dbg("%02X: invalid sequence number\n", seqno);
+        dbg("%02X: %02X %02X %02X\n", ctx->seqno, buf[0], buf[1], buf[1]);
+        //if (buf[1] != ctx->seqno && buf[2] != ((~ctx->seqno) + 1)) {
+        if (buf[1] != ctx->seqno && buf[2] != ((~ctx->seqno))) {
+            dbg("%02X: invalid sequence number\n", ctx->seqno);
             goto retry;
         }
 
         /*
          * receive payload
          */
-        crc = 0;
-        last_block_size = (buf[0] == STX ? STX_SIZE : SOH_SIZE);
-        for (int i = 0; i < last_block_size/BUFSIZE; i++) {
-            int n = modem_xfer_recv_bytes(buf, BUFSIZE, 1000);
-            if (n != BUFSIZE) {
-                info("%02X: payload %d timeout, n=%d\n", seqno, i, n);
-                goto retry;
-            }
-            dbg("%02X: %d bytes received\n", seqno, BUFSIZE);
-            #ifdef DEBUG_VERBOSE
-            hex_dump(buf, BUFSIZE);
-            #endif
-            crc = modem_xfer_crc16(crc, buf, BUFSIZE);
-            if (wait_for_file_name) {
-                memcpy(file_name, buf, sizeof(file_name));
-                file_name[sizeof(file_name) - 1] = '\0';
-                if (file_name[0]) {
-                    buf[BUFSIZE - 1] = '\0';  // fail safe
-                    modem_xfer_hex_dump(buf, 16);
-                    dbg("file info string: %s\n", &buf[strlen((char *)buf) + 1]);
-                    if (sscanf((char*)&buf[strlen((char *)buf) + 1], "%lu", &file_size) != 1) {
-                        warn("WARNING: unknown file size\n");
-                        file_size = 0;
-                    }
-                }
-                file_offset = file_offset_committed = 0;
-                wait_for_file_name = 0;
-            }
-            if (!first_block && (file_size == 0 || file_offset < file_size)) {
-                unsigned int n;
-                if (file_size != 0 && file_size < file_offset + BUFSIZE) {
-                    n = (unsigned int)(file_size - file_offset);
-                } else {
-                    n = BUFSIZE;
-                }
-                res = modem_xfer_save(file_name, file_offset, buf, n);
-                if (res != 0) {
-                    err("failed to save to %s, %d\n", file_name, res);
-                    goto cancel_return;
-                }
-                file_offset += n;
-            }
-        }
-
-        /*
-         * receive and check CRC
-         */
-        if (modem_xfer_recv_bytes(buf, 2, 1000) != 2) {
-            err("%02X: CEC timeout\n", seqno);
-            wait_for_file_name = first_block;
+        int n = modem_xfer_recv_bytes(buf, BUFSIZE, 1000);
+        if (n != BUFSIZE) {
+            info("%02X: payload timeout, n=%d\n", ctx->seqno, n);
             goto retry;
         }
-        dbg("%02X: crc16: %04x %s %04x\n", seqno, buf[0] * 256 + buf[1],
-            (buf[0] * 256 + buf[1]) == crc ? "==" : "!=", crc);
-        if ((buf[0] * 256 + buf[1]) != crc) {
-            if (first_block) {
-                wait_for_file_name = 1;
-            } else
-            if (file_offset != file_offset_committed) {
-                /* rewind file offset and truncate garbage */
-                file_offset = file_offset_committed;
-                res = modem_xfer_save(file_name, file_offset, NULL, 0);
-                if (res != 0) {
-                    err("failed to truncate %s, %d\n", file_name, res);
-                    goto cancel_return;
-                }
-            }
+        dbg("%02X: %d bytes received\n", ctx->seqno, BUFSIZE);
+        #ifdef DEBUG_VERBOSE
+        modem_xfer_hex_dump(buf, BUFSIZE);
+        #endif
+        crc = modem_xfer_crc16(0, buf, BUFSIZE);
+        if (modem_xfer_recv_bytes(crc_buf, 2, 1000) != 2) {
+            err("%02X: CEC timeout\n", ctx->seqno);
+            goto retry;
+        }
+        dbg("%02X: crc16: %04x %s %04x\n", ctx->seqno, crc_buf[0] * 256 + crc_buf[1],
+            (crc_buf[0] * 256 + crc_buf[1]) == crc ? "==" : "!=", crc);
+        if ((crc_buf[0] * 256 + crc_buf[1]) != crc) {
             goto retry;
         }
         modem_xfer_tx(ACK);
-        retry = 0;
 
-        /*
-         * process received block
-         */
-        if (first_block) {
-            if (file_name[0] == 0x00) {
-                info("total %d file%s received\n", files, 1 < files ? "s" : "");
+        if (ctx->stat == MODEM_XFER_STAT_INIT) {
+            memcpy(ctx->file_name, buf, sizeof(ctx->file_name));
+            ctx->file_name[sizeof(ctx->file_name) - 1] = '\0';
+            if (ctx->file_name[0] == 0x00) {
+                info("total %d file%s received\n", ctx->num_files_xfered,
+                     1 < ctx->num_files_xfered ? "s" : "");
                 modem_xfer_tx(ACK);
-                return 0;
+                ctx->stat = MODEM_XFER_STAT_END;
+                return MODEM_XFER_RES_OK;
             }
-            info("receiving file '%s', %lu bytes\n", file_name, (unsigned long)file_size);
+            buf[BUFSIZE - 1] = '\0';  // fail safe
+            modem_xfer_hex_dump(buf, 16);
+            dbg("file info string: %s\n", &buf[strlen((char *)buf) + 1]);
+            if (sscanf((char*)&buf[strlen((char *)buf) + 1], "%lu", &ctx->file_size) != 1) {
+                warn("WARNING: unknown file size\n");
+                ctx->file_size = 0;
+            }
+            ctx->seqno++;
+            ctx->file_offset = 0;
+            ctx->stat = MODEM_XFER_STAT_XFER;
+            dbg("%02X: send REQ\n", ctx->seqno);
             modem_xfer_tx(REQ);
-            first_block = 0;
-            res = modem_xfer_save(file_name, file_offset, NULL, 0);
-            if (res != 0) {
-                err("failed to truncate %s, %d\n", file_name, res);
-                goto cancel_return;
-            }
+            info("receiving file '%s', %lu bytes\n", ctx->file_name, ctx->file_size);
+            goto entry;
         } else {
-            dbg("receiving file '%s', offset %lu -> %lu (%lx -> %lx)\n", file_name,
-                (unsigned long)file_offset_committed, (unsigned long)file_offset,
-                (unsigned long)file_offset_committed, (unsigned long)file_offset);
-            file_offset_committed = file_offset;
+            if (ctx->file_size == 0 || ctx->file_offset < ctx->file_size) {
+                if (ctx->file_size != 0 && ctx->file_size < ctx->file_offset + BUFSIZE) {
+                    *sizep = (unsigned int)(ctx->file_size - ctx->file_offset);
+                } else {
+                    *sizep = BUFSIZE;
+                }
+                ctx->seqno++;
+                return MODEM_XFER_RES_OK;
+            }
         }
-        seqno++;
+        ctx->seqno++;
         continue;
-
     retry:
         res = modem_xfer_discard();
-        dbg("%02X: discard %d bytes and send NAK\n", seqno, res);
+        dbg("%02X: discard %d bytes and send NAK\n", ctx->seqno, res);
         modem_xfer_tx(NAK);
-        if (5 <= ++retry) {
-            goto cancel_return;
-        }
     }
 
-    return 0;
+    ymodem_send_cancel(ctx);
 
- cancel_return:
-    info("cancel\n");
-    modem_xfer_tx(CAN);
-    modem_xfer_tx(CAN);
-    modem_xfer_rx(buf, 1000);
-    return -1;
+    return MODEM_XFER_RES_CANCELED;
 }
