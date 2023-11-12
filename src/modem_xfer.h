@@ -27,6 +27,7 @@
 #include <stdint.h>
 
 #define MODEM_XFER_BUF_SIZE 128
+#define MODEM_XFER_UNKNOWN_FILE_SIZE ((uint32_t)0xffffffff)
 
 enum {
     MODEM_XFER_LOG_ERROR,

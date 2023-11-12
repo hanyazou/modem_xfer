@@ -164,8 +164,12 @@ int ymodem_send_header(ymodem_context *ctx, char *file_name, uint32_t size)
     ctx->seqno = 0;
     dbg("%02X: %s: '%s' %lu\n",  ctx->seqno, __func__, file_name, (unsigned long)size);
     memset(ctx->buf, 0x00, MODEM_XFER_BUF_SIZE);
-    snprintf((char *)ctx->buf, MODEM_XFER_BUF_SIZE, "%s%c%lu", file_name, '\0',
-             (unsigned long)size);
+    if (size == MODEM_XFER_UNKNOWN_FILE_SIZE) {
+        snprintf((char *)ctx->buf, MODEM_XFER_BUF_SIZE, "%s%c", file_name, '\0');
+    } else {
+        snprintf((char *)ctx->buf, MODEM_XFER_BUF_SIZE, "%s%c%lu", file_name, '\0',
+                 (unsigned long)size);
+    }
     res = ymodem_send_block(ctx);
     if (res != MODEM_XFER_RES_OK) {
         return res;
