@@ -33,6 +33,8 @@
 #include "modem_xfer_debug.h"
 #include "ymodem.h"
 
+static int __ymodem_send_block(ymodem_context *ctx);
+
 void ymodem_send_init(ymodem_context *ctx, uint8_t buf[MODEM_XFER_BUF_SIZE])
 {
     dbg("--: %s:\n",  __func__);
@@ -40,6 +42,7 @@ void ymodem_send_init(ymodem_context *ctx, uint8_t buf[MODEM_XFER_BUF_SIZE])
     ctx->buf = buf;
     ctx->num_files_xfered = 0;
     ctx->seqno = 0;
+    ctx->num_bytes_xfered = 0;
 }
 
 int ymodem_send_eot(ymodem_context *ctx)
@@ -170,7 +173,7 @@ int ymodem_send_header(ymodem_context *ctx, char *file_name, uint32_t size)
         snprintf((char *)ctx->buf, MODEM_XFER_BUF_SIZE, "%s%c%lu", file_name, '\0',
                  (unsigned long)size);
     }
-    res = ymodem_send_block(ctx);
+    res = __ymodem_send_block(ctx);
     if (res != MODEM_XFER_RES_OK) {
         return res;
     }
@@ -181,14 +184,18 @@ int ymodem_send_header(ymodem_context *ctx, char *file_name, uint32_t size)
         return MODEM_XFER_RES_OK;
     }
 
-    info("sending file '%s', %lu bytes\n", file_name, (unsigned long)size);
+    if (size != MODEM_XFER_UNKNOWN_FILE_SIZE) {
+        info("sending file '%s', %lu bytes\n", file_name, (unsigned long)size);
+    } else {
+        info("sending file '%s' ...\n", file_name);
+    }
     ctx->stat = MODEM_XFER_STAT_XFER;
     res = ymodem_send_wait_req(ctx, 5);
 
     return res;
 }
 
-int ymodem_send_block(ymodem_context *ctx)
+static int __ymodem_send_block(ymodem_context *ctx)
 {
     int n, res;
     uint8_t buf[1];
@@ -231,6 +238,15 @@ int ymodem_send_block(ymodem_context *ctx)
     return MODEM_XFER_RES_TIMEOUT;
 }
 
+int ymodem_send_block(ymodem_context *ctx)
+{
+    int res = __ymodem_send_block(ctx);
+    if (res == MODEM_XFER_RES_OK) {
+        ctx->num_bytes_xfered += MODEM_XFER_BUF_SIZE;
+    }
+    return res;
+}
+
 int ymodem_send_end(ymodem_context *ctx)
 {
     int res;
@@ -241,7 +257,8 @@ int ymodem_send_end(ymodem_context *ctx)
         ymodem_send_cancel(ctx);
     }
     dbg("%02X: %s: COMPLETED\n",  ctx->seqno, __func__);
-    info("total %d file%s sent\n", ctx->num_files_xfered, 1 < ctx->num_files_xfered ? "s" : "");
+    info("total %d file%s, %ld bytes sent\n", ctx->num_files_xfered,
+         1 < ctx->num_files_xfered ? "s" : "", (unsigned long)ctx->num_bytes_xfered);
 
     return res;
 }

@@ -61,6 +61,7 @@ typedef struct {
     char file_name[12];
     uint32_t file_offset;
     unsigned long file_size;
+    uint32_t num_bytes_xfered;
 } ymodem_context;
 
 extern int ymodem_receive(uint8_t buf[MODEM_XFER_BUF_SIZE]);
