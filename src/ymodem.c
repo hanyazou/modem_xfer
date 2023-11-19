@@ -144,7 +144,7 @@ int ymodem_receive_block(ymodem_context *ctx, unsigned int *sizep)
         }
         dbg("%02X: %d bytes received\n", ctx->seqno, BUFSIZE);
         #ifdef DEBUG_VERBOSE
-        modem_xfer_hex_dump(buf, BUFSIZE);
+        modem_xfer_hex_dump(MODEM_XFER_LOG_DEBUG, buf, BUFSIZE);
         #endif
         crc = modem_xfer_crc16(0, buf, BUFSIZE);
         if (modem_xfer_recv_bytes(crc_buf, 2, 1000) != 2) {
@@ -169,7 +169,7 @@ int ymodem_receive_block(ymodem_context *ctx, unsigned int *sizep)
                 return MODEM_XFER_RES_OK;
             }
             buf[BUFSIZE - 1] = '\0';  // fail safe
-            modem_xfer_hex_dump(buf, 16);
+            modem_xfer_hex_dump(MODEM_XFER_LOG_DEBUG, buf, 16);
             dbg("file info string: %s\n", &buf[strlen((char *)buf) + 1]);
             if (sscanf((char*)&buf[strlen((char *)buf) + 1], "%lu", &ctx->file_size) != 1) {
                 warn("WARNING: unknown file size\n");

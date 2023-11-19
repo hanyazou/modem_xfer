@@ -76,7 +76,7 @@ extern void ymodem_send_cancel(ymodem_context *ctx);
 
 extern int modem_xfer_discard(void);
 extern int modem_xfer_recv_bytes(uint8_t *buf, int n, int timeout_ms);
-extern void modem_xfer_hex_dump(uint8_t *buf, int n);
+extern void modem_xfer_hex_dump(int log_level, uint8_t *buf, int n);
 extern uint16_t modem_xfer_crc16(uint16_t crc, const void *buf, unsigned int count);
 extern int modem_xfer_tx(uint8_t);
 extern int modem_xfer_rx(uint8_t *, int timeout_ms);

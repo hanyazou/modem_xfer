@@ -27,15 +27,21 @@
 #include <string.h>
 #include <stdarg.h>
 
+// #define DEBUG
 #include "modem_xfer_debug.h"
 
 int modem_xfer_discard(void)
 {
     int res = 0;
     uint8_t rxb;
+    uint8_t tmp[16];
     while (modem_xfer_rx(&rxb, 300) == 1) {
+        if (res < sizeof(tmp)) {
+            tmp[res] = rxb;
+        }
         res++;
     }
+    modem_xfer_hex_dump(MODEM_XFER_LOG_DEBUG, tmp, sizeof(tmp));
 
     return res;
 }
@@ -60,12 +66,18 @@ int modem_xfer_recv_bytes(uint8_t *buf, int n, int timeout_ms)
     return i;
 }
 
-void modem_xfer_hex_dump(uint8_t *buf, int n)
+void modem_xfer_hex_dump(int log_level, uint8_t *buf, int n)
 {
     int i;
 
+    #if !defined(DEBUG)
+    if (log_level <= MODEM_XFER_LOG_DEBUG) {
+        return;
+    }
+    #endif
+
     for (i = 0; i < n; i += 16) {
-        dbg("%04X: "
+        modem_xfer_printf(log_level, "%04X: "
             "%02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X "
             "%c%c%c%c%c%c%c%c%c%c%c%c%c%c%c%c\n",
             i,
