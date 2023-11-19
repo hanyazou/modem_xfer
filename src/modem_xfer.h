@@ -58,7 +58,7 @@ typedef struct {
     uint8_t seqno;
     uint8_t *buf;
     int num_files_xfered;
-    char file_name[12];
+    char file_name[13];
     uint32_t file_offset;
     unsigned long file_size;
     uint32_t num_bytes_xfered;
