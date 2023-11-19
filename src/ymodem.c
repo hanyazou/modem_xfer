@@ -82,6 +82,10 @@ int ymodem_receive_block(ymodem_context *ctx, unsigned int *sizep)
     uint16_t crc;
     uint8_t crc_buf[2];
 
+    if (ctx->stat == MODEM_XFER_STAT_END) {
+        *sizep = 0;
+        return MODEM_XFER_RES_OK;
+    }
     if (ctx->stat == MODEM_XFER_STAT_XFER) {
         ctx->file_offset += MODEM_XFER_BUF_SIZE;
     }
